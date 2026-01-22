@@ -1,243 +1,194 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>CTG / TOCO / IUPC Display – Option A (Large Text)</title>
-
+<meta charset="UTF-8">
+<title>CTG / NST Display</title>
 <style>
-html, body {
-    margin: 0;
-    padding: 0;
-    background: #0b0f14;
-    overflow: hidden;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-}
+    body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: Arial, Helvetica, sans-serif;
+        overflow: hidden;
+    }
 
-/* Canvas */
-canvas {
-    position: absolute;
-    inset: 0;
-}
+    #header {
+        padding: 6px 10px;
+        background: #1c1c1c;
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 
-/* HUD */
-#hud {
-    position: absolute;
-    top: 16px;
-    left: 16px;
-    padding: 14px 18px;
-    border-radius: 14px;
-    background: rgba(0,0,0,0.45);
-    backdrop-filter: blur(6px);
-    color: #ffffff;
-    font-size: 20px;            /* 🔹 increased */
-    line-height: 1.4;
-    min-width: 280px;
-}
+    #status {
+        font-weight: bold;
+    }
 
-#hud b {
-    font-weight: 700;
-}
+    #nst {
+        font-size: 13px;
+    }
 
-.dim {
-    opacity: 0.8;
-    font-size: 18px;
-}
+    canvas {
+        display: block;
+        background: #000;
+    }
+
+    #fhrCanvas {
+        height: 260px;
+    }
+
+    #ucCanvas {
+        height: 140px;
+        border-top: 1px solid #333;
+    }
 </style>
 </head>
 
 <body>
-<canvas id="c"></canvas>
 
-<div id="hud">
-    <div><b>Mode:</b> <span id="mode">TOCO</span> <span class="dim" id="submode">(grid)</span></div>
-    <div><b>Patient:</b> <span id="patient">—</span> <span class="dim" id="ga"></span></div>
-    <div><b>FHR:</b> <span id="fhr">—</span></div>
-    <div><b>UC:</b> <span id="uc">TOCO 0%</span></div>
+<div id="header">
+    <div id="status">MODE</div>
+    <div id="nst">NST</div>
 </div>
 
+<canvas id="fhrCanvas"></canvas>
+<canvas id="ucCanvas"></canvas>
+
 <script>
-/* ============================================================
-   Core setup
-============================================================ */
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+/* -------------------- PARAM PARSING -------------------- */
 
-function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = innerWidth * dpr;
-    canvas.height = innerHeight * dpr;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-}
-addEventListener("resize", resize);
-resize();
+const params = new URLSearchParams(window.location.search);
 
-/* ============================================================
-   State
-============================================================ */
-const state = {
-    mode: "TOCO",
-    running: false,
-    x: 0,
-    step: 2,
-    fhrBuf: [[],[],[]],
-    ucBuf: [],
-    fhr: {},
-    uc: { toco: 0, mmhg: null, tone: null }
-};
-
-const ui = {
-    mode: document.getElementById("mode"),
-    sub: document.getElementById("submode"),
-    patient: document.getElementById("patient"),
-    ga: document.getElementById("ga"),
-    fhr: document.getElementById("fhr"),
-    uc: document.getElementById("uc")
-};
-
-/* ============================================================
-   Mapping helpers
-============================================================ */
-function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-
-function fhrY(bpm, mid){
-    const lo=30, hi=240;
-    const t=(clamp(bpm,lo,hi)-lo)/(hi-lo);
-    return (mid-30)-(mid-60)*t;
+function getList(name) {
+    const raw = params.get(name);
+    if (!raw) return [];
+    return raw.split(",").map(v => parseInt(v, 10));
 }
 
-function ucY(v, mid, h){
-    const t=clamp(v,0,100)/100;
-    return (h-30)-(h-mid-60)*t;
+function getMarkers() {
+    const raw = params.get("k");
+    if (!raw) return [];
+    return raw.split(";").map(m => {
+        const p = m.split(":");
+        return { t: parseInt(p[0]), code: p[1], sub: p[2] || "" };
+    });
 }
 
-/* ============================================================
-   Drawing
-============================================================ */
-function drawGrid(){
-    const w=innerWidth, h=innerHeight;
-    const mid=Math.floor(h*0.68);
+/* -------------------- DATA -------------------- */
 
-    ctx.fillStyle="#0b0f14";
-    ctx.fillRect(0,0,w,h);
+const mode       = params.get("mode") || "IDLE";
+const patient    = params.get("pat")  || "";
+const ga         = params.get("ga")   || "";
+const fhr        = getList("f");
+const uc         = getList("u");
+const markers    = getMarkers();
 
-    ctx.lineWidth=1;
-    for(let x=0;x<w;x+=20){
-        ctx.strokeStyle=(x%100===0)?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.05)";
-        ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
-    }
-    for(let y=0;y<h;y+=20){
-        ctx.strokeStyle=(y%100===0)?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.05)";
-        ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();
+const nstStatus  = params.get("nst") || "";
+const elapsed    = parseInt(params.get("e") || 0);
+const total      = parseInt(params.get("T") || 0);
+
+/* -------------------- HEADER -------------------- */
+
+document.getElementById("status").innerText =
+    `${mode}  |  ${patient} ${ga}w`;
+
+if (mode === "NST") {
+    document.getElementById("nst").innerText =
+        `NST: ${nstStatus}  ${elapsed}/${total}s`;
+} else {
+    document.getElementById("nst").innerText = "";
+}
+
+/* -------------------- CANVAS SETUP -------------------- */
+
+const fhrCanvas = document.getElementById("fhrCanvas");
+const ucCanvas  = document.getElementById("ucCanvas");
+
+fhrCanvas.width = window.innerWidth;
+ucCanvas.width  = window.innerWidth;
+
+fhrCanvas.height = 260;
+ucCanvas.height  = 140;
+
+const fctx = fhrCanvas.getContext("2d");
+const uctx = ucCanvas.getContext("2d");
+
+/* -------------------- DRAW HELPERS -------------------- */
+
+function drawGrid(ctx, h, vStep, hStep) {
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+
+    for (let y = 0; y < h; y += hStep) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(ctx.canvas.width, y);
+        ctx.stroke();
     }
 
-    ctx.lineWidth=3;
-    ctx.strokeStyle="rgba(255,255,255,0.35)";
-    ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(w,mid);ctx.stroke();
+    for (let x = 0; x < ctx.canvas.width; x += vStep) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+    }
+}
 
-    ctx.fillStyle="rgba(255,255,255,0.9)";
-    ctx.font="18px system-ui";   /* 🔹 larger axis labels */
+function drawWave(ctx, data, min, max, color) {
+    if (!data.length) return;
 
-    [60,90,120,150,180].forEach(v=>{
-        ctx.fillText(v,10,fhrY(v,mid));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    const scaleY = ctx.canvas.height / (max - min);
+    const stepX = ctx.canvas.width / (data.length - 1);
+
+    data.forEach((v, i) => {
+        const x = i * stepX;
+        const y = ctx.canvas.height - ((v - min) * scaleY);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
     });
 
-    if(state.mode==="IUPC"){
-        [10,20,30,40,50,60].forEach(v=>{
-            ctx.fillText(v,10,ucY(v,mid,h));
-        });
-    }
-}
-
-function drawTrace(buf,color){
-    if(buf.length<2) return;
-    ctx.strokeStyle=color;
-    ctx.lineWidth=3;             /* 🔹 thicker lines */
-    ctx.beginPath();
-    ctx.moveTo(buf[0].x,buf[0].y);
-    for(let i=1;i<buf.length;i++) ctx.lineTo(buf[i].x,buf[i].y);
     ctx.stroke();
 }
 
-function scroll(){
-    if(state.x<=innerWidth) return;
-    state.fhrBuf.forEach((b,i)=>{
-        state.fhrBuf[i]=b.map(p=>({x:p.x-state.step,y:p.y})).filter(p=>p.x>=0);
+function drawMarkers(ctx, markers, y) {
+    markers.forEach(m => {
+        let color = "#888";
+        if (m.code === "M") color = "#4af";     // movement
+        if (m.code === "A") color = "#5f5";     // accel
+        if (m.code === "DE" || m.code === "DL" || m.code === "DV") color = "#f55";
+
+        ctx.fillStyle = color;
+        ctx.fillRect(
+            (m.t / (fhr.length || 1)) * ctx.canvas.width,
+            y,
+            2,
+            12
+        );
     });
-    state.ucBuf=state.ucBuf.map(p=>({x:p.x-state.step,y:p.y})).filter(p=>p.x>=0);
-    state.x-=state.step;
 }
 
-function render(){
-    drawGrid();
-    drawTrace(state.fhrBuf[0],"#00ff9c");
-    drawTrace(state.fhrBuf[1],"#ffd000");
-    drawTrace(state.fhrBuf[2],"#7ab8ff");
-    drawTrace(state.ucBuf,"#ff5c7a");
-    requestAnimationFrame(render);
-}
-render();
+/* -------------------- DRAW -------------------- */
 
-/* ============================================================
-   Message handling (SL bridge)
-============================================================ */
-function reset(){
-    state.x=0;
-    state.fhrBuf=[[],[],[]];
-    state.ucBuf=[];
-}
+fctx.clearRect(0, 0, fhrCanvas.width, fhrCanvas.height);
+uctx.clearRect(0, 0, ucCanvas.width, ucCanvas.height);
 
-function updateHUD(){
-    const f=[];
-    for(const i in state.fhr) f.push(`B${+i+1}:${state.fhr[i]}`);
-    ui.fhr.textContent=f.length?f.join("  "):"—";
-    ui.uc.textContent=state.mode==="TOCO"
-        ?`TOCO ${Math.round(state.uc.toco)}%`
-        :`IUPC ${state.uc.mmhg??"—"} mmHg`;
-}
+// grids
+drawGrid(fctx, fhrCanvas.height, 60, 40);
+drawGrid(uctx, ucCanvas.height, 60, 35);
 
-function parse(msg){
-    const p=msg.split("|");
-    if(p[0]==="DISP" && p[1]==="RESET"){ reset(); return; }
-    if(p[0]==="DISP" && p[1]==="MODE"){
-        state.mode=p[2]==="IUPC"?"IUPC":"TOCO";
-        ui.mode.textContent=state.mode;
-        ui.sub.textContent=state.mode==="IUPC"?"(mmHg)":"(grid)";
-        reset();
-        return;
-    }
-    if(p[0]==="MC" && p[1]==="PATIENT"){
-        ui.patient.textContent=p[2]||"—";
-        ui.ga.textContent=p[3]?`${p[3]}w`:"";
-        return;
-    }
-    if(p[0]==="FHR"){
-        const idx=+p[2], bpm=+p[3];
-        if(!isNaN(bpm)){
-            state.fhr[idx]=Math.round(bpm);
-            state.fhrBuf[idx].push({x:state.x,y:fhrY(bpm,innerHeight*0.68)});
-            state.x+=state.step; scroll(); updateHUD();
-        }
-    }
-    if(p[0]==="CON"){
-        if(p[1]==="TOCO"){
-            state.uc.toco=+p[2];
-            if(state.mode==="TOCO"){
-                state.ucBuf.push({x:state.x,y:ucY(state.uc.toco,innerHeight*0.68,innerHeight)});
-            }
-        }
-        if(p[1]==="IUPC"){
-            state.uc.mmhg=+p[2];
-            if(state.mode==="IUPC"){
-                state.ucBuf.push({x:state.x,y:ucY(state.uc.mmhg,innerHeight*0.68,innerHeight)});
-            }
-        }
-        state.x+=state.step; scroll(); updateHUD();
-    }
-}
+// waves
+drawWave(fctx, fhr, 60, 200, "#0f0");
+drawWave(uctx, uc, 0, 100, "#fff");
 
-window.SLReceiveEncoded=e=>{
-    try{ parse(decodeURIComponent(e)); }catch{}
-};
+// markers
+drawMarkers(fctx, markers, 10);
+drawMarkers(uctx, markers, 10);
 </script>
+
 </body>
 </html>
