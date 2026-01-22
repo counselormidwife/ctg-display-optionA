@@ -3,191 +3,193 @@
 <head>
 <meta charset="UTF-8">
 <title>CTG / NST Display</title>
+
 <style>
-    body {
-        margin: 0;
-        background: #111;
-        color: #eee;
-        font-family: Arial, Helvetica, sans-serif;
-        overflow: hidden;
-    }
+body {
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+}
 
-    #header {
-        padding: 6px 10px;
-        background: #1c1c1c;
-        font-size: 14px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
+/* Header */
+#header {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    z-index: 10;
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 4px #000;
+}
 
-    #status {
-        font-weight: bold;
-    }
+#subheader {
+    position: absolute;
+    top: 26px;
+    left: 8px;
+    z-index: 10;
+    font-size: 14px;
+    color: #aaffaa;
+    text-shadow: 0 0 4px #000;
+}
 
-    #nst {
-        font-size: 13px;
-    }
+/* Canvases */
+canvas {
+    display: block;
+}
 
-    canvas {
-        display: block;
-        background: #000;
-    }
+#fhrCanvas {
+    margin-top: 48px;
+    background: #000;
+}
 
-    #fhrCanvas {
-        height: 260px;
-    }
-
-    #ucCanvas {
-        height: 140px;
-        border-top: 1px solid #333;
-    }
+#ucCanvas {
+    background: #000;
+    border-top: 2px solid #444;
+}
 </style>
 </head>
 
 <body>
 
-<div id="header">
-    <div id="status">MODE</div>
-    <div id="nst">NST</div>
-</div>
+<div id="header">CTG MONITOR</div>
+<div id="subheader">—</div>
 
 <canvas id="fhrCanvas"></canvas>
 <canvas id="ucCanvas"></canvas>
 
 <script>
-/* -------------------- PARAM PARSING -------------------- */
+/* ---------- URL PARAMS ---------- */
 
 const params = new URLSearchParams(window.location.search);
 
-function getList(name) {
-    const raw = params.get(name);
-    if (!raw) return [];
-    return raw.split(",").map(v => parseInt(v, 10));
+function list(name) {
+    const v = params.get(name);
+    return v ? v.split(",").map(n => parseInt(n, 10)) : [];
 }
 
-function getMarkers() {
+function markers() {
     const raw = params.get("k");
     if (!raw) return [];
     return raw.split(";").map(m => {
         const p = m.split(":");
-        return { t: parseInt(p[0]), code: p[1], sub: p[2] || "" };
+        return { t: +p[0], code: p[1] };
     });
 }
 
-/* -------------------- DATA -------------------- */
+const mode    = params.get("mode") || "IDLE";
+const patient = params.get("pat") || "";
+const ga      = params.get("ga")  || "";
 
-const mode       = params.get("mode") || "IDLE";
-const patient    = params.get("pat")  || "";
-const ga         = params.get("ga")   || "";
-const fhr        = getList("f");
-const uc         = getList("u");
-const markers    = getMarkers();
+const fhr = list("f");
+const uc  = list("u");
+const mk  = markers();
 
-const nstStatus  = params.get("nst") || "";
-const elapsed    = parseInt(params.get("e") || 0);
-const total      = parseInt(params.get("T") || 0);
+const nst = params.get("nst") || "";
+const e   = +params.get("e") || 0;
+const T   = +params.get("T") || 0;
 
-/* -------------------- HEADER -------------------- */
+/* ---------- HEADER TEXT ---------- */
 
-document.getElementById("status").innerText =
+document.getElementById("header").innerText =
     `${mode}  |  ${patient} ${ga}w`;
 
-if (mode === "NST") {
-    document.getElementById("nst").innerText =
-        `NST: ${nstStatus}  ${elapsed}/${total}s`;
-} else {
-    document.getElementById("nst").innerText = "";
-}
+document.getElementById("subheader").innerText =
+    mode === "NST" ? `NST: ${nst}   ${e}/${T}s` : "";
 
-/* -------------------- CANVAS SETUP -------------------- */
+/* ---------- CANVAS SETUP ---------- */
 
-const fhrCanvas = document.getElementById("fhrCanvas");
-const ucCanvas  = document.getElementById("ucCanvas");
+const fhrC = document.getElementById("fhrCanvas");
+const ucC  = document.getElementById("ucCanvas");
 
-fhrCanvas.width = window.innerWidth;
-ucCanvas.width  = window.innerWidth;
+fhrC.width = window.innerWidth;
+ucC.width  = window.innerWidth;
 
-fhrCanvas.height = 260;
-ucCanvas.height  = 140;
+fhrC.height = 260;
+ucC.height  = 140;
 
-const fctx = fhrCanvas.getContext("2d");
-const uctx = ucCanvas.getContext("2d");
+const fctx = fhrC.getContext("2d");
+const uctx = ucC.getContext("2d");
 
-/* -------------------- DRAW HELPERS -------------------- */
+/* ---------- DRAW HELPERS ---------- */
 
-function drawGrid(ctx, h, vStep, hStep) {
-    ctx.strokeStyle = "#222";
-    ctx.lineWidth = 1;
+function grid(ctx, min, max, step, labelEvery) {
+    const h = ctx.canvas.height;
+    const scale = h / (max - min);
 
-    for (let y = 0; y < h; y += hStep) {
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = "#ccc";
+    ctx.font = "12px Arial";
+
+    for (let v = min; v <= max; v += step) {
+        const y = h - (v - min) * scale;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(ctx.canvas.width, y);
         ctx.stroke();
-    }
 
-    for (let x = 0; x < ctx.canvas.width; x += vStep) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
+        if (v % labelEvery === 0) {
+            ctx.fillText(v.toString(), 4, y - 2);
+        }
     }
 }
 
-function drawWave(ctx, data, min, max, color) {
+function wave(ctx, data, min, max, color) {
     if (!data.length) return;
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    const scaleY = ctx.canvas.height / (max - min);
+    const h = ctx.canvas.height;
+    const scaleY = h / (max - min);
     const stepX = ctx.canvas.width / (data.length - 1);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
 
     data.forEach((v, i) => {
         const x = i * stepX;
-        const y = ctx.canvas.height - ((v - min) * scaleY);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const y = h - (v - min) * scaleY;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
 
     ctx.stroke();
 }
 
-function drawMarkers(ctx, markers, y) {
-    markers.forEach(m => {
-        let color = "#888";
-        if (m.code === "M") color = "#4af";     // movement
-        if (m.code === "A") color = "#5f5";     // accel
-        if (m.code === "DE" || m.code === "DL" || m.code === "DV") color = "#f55";
+function drawMarkers(ctx, mks, y) {
+    mks.forEach(m => {
+        let c = "#888";
+        if (m.code === "M") c = "#4aa3ff";
+        if (m.code === "A") c = "#66ff66";
+        if (m.code === "DE" || m.code === "DL" || m.code === "DV") c = "#ff5555";
 
-        ctx.fillStyle = color;
+        ctx.fillStyle = c;
         ctx.fillRect(
             (m.t / (fhr.length || 1)) * ctx.canvas.width,
             y,
-            2,
-            12
+            3,
+            14
         );
     });
 }
 
-/* -------------------- DRAW -------------------- */
+/* ---------- DRAW ---------- */
 
-fctx.clearRect(0, 0, fhrCanvas.width, fhrCanvas.height);
-uctx.clearRect(0, 0, ucCanvas.width, ucCanvas.height);
+fctx.clearRect(0, 0, fhrC.width, fhrC.height);
+uctx.clearRect(0, 0, ucC.width, ucC.height);
 
-// grids
-drawGrid(fctx, fhrCanvas.height, 60, 40);
-drawGrid(uctx, ucCanvas.height, 60, 35);
+// grids with labels
+grid(fctx, 60, 200, 10, 20);   // FHR bpm
+grid(uctx, 0, 100, 10, 20);    // UC mmHg
 
 // waves
-drawWave(fctx, fhr, 60, 200, "#0f0");
-drawWave(uctx, uc, 0, 100, "#fff");
+wave(fctx, fhr, 60, 200, "#00ff00");
+wave(uctx, uc, 0, 100, "#ffffff");
 
 // markers
-drawMarkers(fctx, markers, 10);
-drawMarkers(uctx, markers, 10);
+drawMarkers(fctx, mk, 10);
+drawMarkers(uctx, mk, 10);
 </script>
 
 </body>
