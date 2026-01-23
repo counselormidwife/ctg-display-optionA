@@ -5,19 +5,21 @@
 <title>CTG / NST Display</title>
 
 <style>
-body {
+html, body {
     margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
     background: #000;
-    color: #fff;
-    font-family: Arial, Helvetica, sans-serif;
     overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
 /* Header */
 #header {
     position: absolute;
-    top: 4px;
-    left: 8px;
+    top: 6px;
+    left: 10px;
     z-index: 10;
     font-size: 16px;
     font-weight: bold;
@@ -27,25 +29,38 @@ body {
 
 #subheader {
     position: absolute;
-    top: 26px;
-    left: 8px;
+    top: 30px;
+    left: 10px;
     z-index: 10;
     font-size: 14px;
     color: #aaffaa;
     text-shadow: 0 0 4px #000;
 }
 
+/* Layout container */
+#container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Canvases */
 canvas {
     display: block;
+    width: 100%;
 }
 
 #fhrCanvas {
-    margin-top: 48px;
+    flex: 7;               /* ~70% */
     background: #000;
 }
 
 #ucCanvas {
+    flex: 3;               /* ~30% */
     background: #000;
     border-top: 2px solid #444;
 }
@@ -57,8 +72,10 @@ canvas {
 <div id="header">CTG MONITOR</div>
 <div id="subheader">—</div>
 
-<canvas id="fhrCanvas"></canvas>
-<canvas id="ucCanvas"></canvas>
+<div id="container">
+    <canvas id="fhrCanvas"></canvas>
+    <canvas id="ucCanvas"></canvas>
+</div>
 
 <script>
 /* ---------- URL PARAMS ---------- */
@@ -91,7 +108,7 @@ const nst = params.get("nst") || "";
 const e   = +params.get("e") || 0;
 const T   = +params.get("T") || 0;
 
-/* ---------- HEADER TEXT ---------- */
+/* ---------- HEADER ---------- */
 
 document.getElementById("header").innerText =
     `${mode}  |  ${patient} ${ga}w`;
@@ -104,11 +121,16 @@ document.getElementById("subheader").innerText =
 const fhrC = document.getElementById("fhrCanvas");
 const ucC  = document.getElementById("ucCanvas");
 
-fhrC.width = window.innerWidth;
-ucC.width  = window.innerWidth;
+function resizeCanvases() {
+    fhrC.width = window.innerWidth;
+    ucC.width  = window.innerWidth;
 
-fhrC.height = 260;
-ucC.height  = 140;
+    fhrC.height = fhrC.clientHeight;
+    ucC.height  = ucC.clientHeight;
+}
+
+window.addEventListener("resize", resizeCanvases);
+resizeCanvases();
 
 const fctx = fhrC.getContext("2d");
 const uctx = ucC.getContext("2d");
@@ -119,9 +141,9 @@ function grid(ctx, min, max, step, labelEvery) {
     const h = ctx.canvas.height;
     const scale = h / (max - min);
 
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = "#555";
     ctx.lineWidth = 1.5;
-    ctx.fillStyle = "#ccc";
+    ctx.fillStyle = "#ddd";
     ctx.font = "12px Arial";
 
     for (let v = min; v <= max; v += step) {
@@ -132,7 +154,7 @@ function grid(ctx, min, max, step, labelEvery) {
         ctx.stroke();
 
         if (v % labelEvery === 0) {
-            ctx.fillText(v.toString(), 4, y - 2);
+            ctx.fillText(v.toString(), 6, y - 2);
         }
     }
 }
@@ -169,7 +191,7 @@ function drawMarkers(ctx, mks, y) {
             (m.t / (fhr.length || 1)) * ctx.canvas.width,
             y,
             3,
-            14
+            16
         );
     });
 }
@@ -179,9 +201,9 @@ function drawMarkers(ctx, mks, y) {
 fctx.clearRect(0, 0, fhrC.width, fhrC.height);
 uctx.clearRect(0, 0, ucC.width, ucC.height);
 
-// grids with labels
-grid(fctx, 60, 200, 10, 20);   // FHR bpm
-grid(uctx, 0, 100, 10, 20);    // UC mmHg
+// grids
+grid(fctx, 60, 200, 10, 20);
+grid(uctx, 0, 100, 10, 20);
 
 // waves
 wave(fctx, fhr, 60, 200, "#00ff00");
