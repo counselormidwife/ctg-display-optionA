@@ -15,29 +15,34 @@ html, body {
     font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Header */
-#header {
+/* ================= HEADER (SL SAFE) ================= */
+
+#headerBox {
     position: absolute;
-    top: 6px;
-    left: 10px;
-    z-index: 10;
-    font-size: 16px;
+    top: 40px;                 /* BELOW SL CLIP ZONE */
+    left: 12px;
+    z-index: 9999;
+    background: rgba(0,0,0,0.7);
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #777;
+    min-width: 240px;
+}
+
+#headerText {
+    font-size: 18px;
     font-weight: bold;
     color: #ffffff;
-    text-shadow: 0 0 4px #000;
 }
 
-#subheader {
-    position: absolute;
-    top: 30px;
-    left: 10px;
-    z-index: 10;
+#subheaderText {
+    margin-top: 4px;
     font-size: 14px;
     color: #aaffaa;
-    text-shadow: 0 0 4px #000;
 }
 
-/* Layout container */
+/* ================= LAYOUT ================= */
+
 #container {
     position: absolute;
     top: 0;
@@ -48,29 +53,30 @@ html, body {
     flex-direction: column;
 }
 
-/* Canvases */
 canvas {
     display: block;
     width: 100%;
 }
 
 #fhrCanvas {
-    flex: 7;               /* ~70% */
+    flex: 7;                   /* ~70% height */
     background: #000;
 }
 
 #ucCanvas {
-    flex: 3;               /* ~30% */
+    flex: 3;                   /* ~30% height */
     background: #000;
-    border-top: 2px solid #444;
+    border-top: 2px solid #555;
 }
 </style>
 </head>
 
 <body>
 
-<div id="header">CTG MONITOR</div>
-<div id="subheader">—</div>
+<div id="headerBox">
+    <div id="headerText">CTG MONITOR</div>
+    <div id="subheaderText">—</div>
+</div>
 
 <div id="container">
     <canvas id="fhrCanvas"></canvas>
@@ -78,16 +84,16 @@ canvas {
 </div>
 
 <script>
-/* ---------- URL PARAMS ---------- */
+/* ================= URL PARAMS ================= */
 
 const params = new URLSearchParams(window.location.search);
 
-function list(name) {
+function listParam(name) {
     const v = params.get(name);
     return v ? v.split(",").map(n => parseInt(n, 10)) : [];
 }
 
-function markers() {
+function markerParam() {
     const raw = params.get("k");
     if (!raw) return [];
     return raw.split(";").map(m => {
@@ -97,26 +103,28 @@ function markers() {
 }
 
 const mode    = params.get("mode") || "IDLE";
-const patient = params.get("pat") || "";
-const ga      = params.get("ga")  || "";
+const patient = params.get("pat")  || "";
+const ga      = params.get("ga")   || "";
 
-const fhr = list("f");
-const uc  = list("u");
-const mk  = markers();
+const fhr = listParam("f");
+const uc  = listParam("u");
+const mk  = markerParam();
 
 const nst = params.get("nst") || "";
 const e   = +params.get("e") || 0;
 const T   = +params.get("T") || 0;
 
-/* ---------- HEADER ---------- */
+/* ================= HEADER TEXT ================= */
 
-document.getElementById("header").innerText =
+document.getElementById("headerText").innerText =
     `${mode}  |  ${patient} ${ga}w`;
 
-document.getElementById("subheader").innerText =
-    mode === "NST" ? `NST: ${nst}   ${e}/${T}s` : "";
+document.getElementById("subheaderText").innerText =
+    mode === "NST"
+        ? `NST: ${nst}   ${e}/${T}s`
+        : "";
 
-/* ---------- CANVAS SETUP ---------- */
+/* ================= CANVAS SETUP ================= */
 
 const fhrC = document.getElementById("fhrCanvas");
 const ucC  = document.getElementById("ucCanvas");
@@ -135,15 +143,15 @@ resizeCanvases();
 const fctx = fhrC.getContext("2d");
 const uctx = ucC.getContext("2d");
 
-/* ---------- DRAW HELPERS ---------- */
+/* ================= DRAW HELPERS ================= */
 
-function grid(ctx, min, max, step, labelEvery) {
+function drawGrid(ctx, min, max, step, labelEvery) {
     const h = ctx.canvas.height;
     const scale = h / (max - min);
 
-    ctx.strokeStyle = "#555";
+    ctx.strokeStyle = "#666";
     ctx.lineWidth = 1.5;
-    ctx.fillStyle = "#ddd";
+    ctx.fillStyle = "#dddddd";
     ctx.font = "12px Arial";
 
     for (let v = min; v <= max; v += step) {
@@ -159,7 +167,7 @@ function grid(ctx, min, max, step, labelEvery) {
     }
 }
 
-function wave(ctx, data, min, max, color) {
+function drawWave(ctx, data, min, max, color) {
     if (!data.length) return;
 
     const h = ctx.canvas.height;
@@ -179,14 +187,15 @@ function wave(ctx, data, min, max, color) {
     ctx.stroke();
 }
 
-function drawMarkers(ctx, mks, y) {
-    mks.forEach(m => {
-        let c = "#888";
-        if (m.code === "M") c = "#4aa3ff";
-        if (m.code === "A") c = "#66ff66";
-        if (m.code === "DE" || m.code === "DL" || m.code === "DV") c = "#ff5555";
+function drawMarkers(ctx, markers, y) {
+    markers.forEach(m => {
+        let color = "#aaaaaa";
+        if (m.code === "M")  color = "#4aa3ff";  // fetal movement
+        if (m.code === "A")  color = "#66ff66";  // accel
+        if (m.code === "DE" || m.code === "DL" || m.code === "DV")
+            color = "#ff5555";                  // decel
 
-        ctx.fillStyle = c;
+        ctx.fillStyle = color;
         ctx.fillRect(
             (m.t / (fhr.length || 1)) * ctx.canvas.width,
             y,
@@ -196,22 +205,22 @@ function drawMarkers(ctx, mks, y) {
     });
 }
 
-/* ---------- DRAW ---------- */
+/* ================= DRAW ================= */
 
 fctx.clearRect(0, 0, fhrC.width, fhrC.height);
 uctx.clearRect(0, 0, ucC.width, ucC.height);
 
 // grids
-grid(fctx, 60, 200, 10, 20);
-grid(uctx, 0, 100, 10, 20);
+drawGrid(fctx, 60, 200, 10, 20);   // FHR bpm
+drawGrid(uctx, 0, 100, 10, 20);    // UC mmHg
 
 // waves
-wave(fctx, fhr, 60, 200, "#00ff00");
-wave(uctx, uc, 0, 100, "#ffffff");
+drawWave(fctx, fhr, 60, 200, "#00ff00");
+drawWave(uctx, uc, 0, 100, "#ffffff");
 
 // markers
-drawMarkers(fctx, mk, 10);
-drawMarkers(uctx, mk, 10);
+drawMarkers(fctx, mk, 12);
+drawMarkers(uctx, mk, 12);
 </script>
 
 </body>
