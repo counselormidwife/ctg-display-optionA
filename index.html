@@ -15,11 +15,11 @@ html, body {
     font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ================= HEADER (SL SAFE) ================= */
+/* ================= HEADER ================= */
 
 #headerBox {
     position: absolute;
-    top: 40px;                 /* BELOW SL CLIP ZONE */
+    top: 40px;
     left: 12px;
     z-index: 9999;
     background: rgba(0,0,0,0.7);
@@ -45,10 +45,7 @@ html, body {
 
 #container {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     display: flex;
     flex-direction: column;
 }
@@ -59,12 +56,12 @@ canvas {
 }
 
 #fhrCanvas {
-    flex: 7;                   /* ~70% height */
+    flex: 7;
     background: #000;
 }
 
 #ucCanvas {
-    flex: 3;                   /* ~30% height */
+    flex: 3;
     background: #000;
     border-top: 2px solid #555;
 }
@@ -88,70 +85,58 @@ canvas {
 
 const params = new URLSearchParams(window.location.search);
 
-function listParam(name) {
-    const v = params.get(name);
-    return v ? v.split(",").map(n => parseInt(n, 10)) : [];
-}
+const list = n => params.get(n)?.split(",").map(v => +v) || [];
+const markers = () => params.get("k")
+    ? params.get("k").split(";").map(m => {
+        const p = m.split(":"); return { t:+p[0], code:p[1] };
+      })
+    : [];
 
-function markerParam() {
-    const raw = params.get("k");
-    if (!raw) return [];
-    return raw.split(";").map(m => {
-        const p = m.split(":");
-        return { t: +p[0], code: p[1] };
-    });
-}
+const mode = params.get("mode") || "IDLE";
+const patient = params.get("pat") || "";
+const ga = params.get("ga") || "";
 
-const mode    = params.get("mode") || "IDLE";
-const patient = params.get("pat")  || "";
-const ga      = params.get("ga")   || "";
-
-const fhr = listParam("f");
-const uc  = listParam("u");
-const mk  = markerParam();
+const fhr = list("f");
+const uc = list("u");
+const mk = markers();
 
 const nst = params.get("nst") || "";
-const e   = +params.get("e") || 0;
-const T   = +params.get("T") || 0;
+const e = +params.get("e") || 0;
+const T = +params.get("T") || 0;
 
-/* ================= HEADER TEXT ================= */
+/* ================= HEADER ================= */
 
 document.getElementById("headerText").innerText =
     `${mode}  |  ${patient} ${ga}w`;
 
 document.getElementById("subheaderText").innerText =
-    mode === "NST"
-        ? `NST: ${nst}   ${e}/${T}s`
-        : "";
+    mode === "NST" ? `NST: ${nst}   ${e}/${T}s` : "";
 
-/* ================= CANVAS SETUP ================= */
+/* ================= CANVAS ================= */
 
 const fhrC = document.getElementById("fhrCanvas");
 const ucC  = document.getElementById("ucCanvas");
 
-function resizeCanvases() {
-    fhrC.width = window.innerWidth;
-    ucC.width  = window.innerWidth;
-
+function resize() {
+    fhrC.width = innerWidth;
+    ucC.width  = innerWidth;
     fhrC.height = fhrC.clientHeight;
     ucC.height  = ucC.clientHeight;
 }
-
-window.addEventListener("resize", resizeCanvases);
-resizeCanvases();
+addEventListener("resize", resize);
+resize();
 
 const fctx = fhrC.getContext("2d");
 const uctx = ucC.getContext("2d");
 
 /* ================= DRAW HELPERS ================= */
 
-function drawGrid(ctx, min, max, step, labelEvery) {
+function grid(ctx, min, max, step, labelEvery) {
     const h = ctx.canvas.height;
     const scale = h / (max - min);
-
     ctx.strokeStyle = "#666";
     ctx.lineWidth = 1.5;
-    ctx.fillStyle = "#dddddd";
+    ctx.fillStyle = "#ddd";
     ctx.font = "12px Arial";
 
     for (let v = min; v <= max; v += step) {
@@ -160,65 +145,63 @@ function drawGrid(ctx, min, max, step, labelEvery) {
         ctx.moveTo(0, y);
         ctx.lineTo(ctx.canvas.width, y);
         ctx.stroke();
-
-        if (v % labelEvery === 0) {
-            ctx.fillText(v.toString(), 6, y - 2);
-        }
+        if (v % labelEvery === 0) ctx.fillText(v, 6, y - 2);
     }
 }
 
-function drawWave(ctx, data, min, max, color) {
+function wave(ctx, data, min, max, baseColor, highlightColor) {
     if (!data.length) return;
 
     const h = ctx.canvas.height;
     const scaleY = h / (max - min);
     const stepX = ctx.canvas.width / (data.length - 1);
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
+    // underlay (soft, thick)
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 4.5;
+    ctx.lineJoin = "round";
     ctx.beginPath();
-
     data.forEach((v, i) => {
         const x = i * stepX;
         const y = h - (v - min) * scaleY;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
     });
+    ctx.stroke();
 
+    // foreground (sharp)
+    ctx.strokeStyle = highlightColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+        const x = i * stepX;
+        const y = h - (v - min) * scaleY;
+        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
     ctx.stroke();
 }
 
-function drawMarkers(ctx, markers, y) {
-    markers.forEach(m => {
-        let color = "#aaaaaa";
-        if (m.code === "M")  color = "#4aa3ff";  // fetal movement
-        if (m.code === "A")  color = "#66ff66";  // accel
-        if (m.code === "DE" || m.code === "DL" || m.code === "DV")
-            color = "#ff5555";                  // decel
-
-        ctx.fillStyle = color;
-        ctx.fillRect(
-            (m.t / (fhr.length || 1)) * ctx.canvas.width,
-            y,
-            3,
-            16
-        );
+function drawMarkers(ctx, mks, y) {
+    mks.forEach(m => {
+        let c = "#aaa";
+        if (m.code === "M") c = "#4aa3ff";
+        if (m.code === "A") c = "#66ff66";
+        if (["DE","DL","DV"].includes(m.code)) c = "#ff5555";
+        ctx.fillStyle = c;
+        ctx.fillRect((m.t/(fhr.length||1))*ctx.canvas.width, y, 3, 16);
     });
 }
 
 /* ================= DRAW ================= */
 
-fctx.clearRect(0, 0, fhrC.width, fhrC.height);
-uctx.clearRect(0, 0, ucC.width, ucC.height);
+fctx.clearRect(0,0,fhrC.width,fhrC.height);
+uctx.clearRect(0,0,ucC.width,ucC.height);
 
-// grids
-drawGrid(fctx, 60, 200, 10, 20);   // FHR bpm
-drawGrid(uctx, 0, 100, 10, 20);    // UC mmHg
+grid(fctx, 60, 200, 10, 20);
+grid(uctx, 0, 100, 10, 20);
 
-// waves
-drawWave(fctx, fhr, 60, 200, "#00ff00");
-drawWave(uctx, uc, 0, 100, "#ffffff");
+wave(fctx, fhr, 60, 200, "#003300", "#00ff00");
+wave(uctx, uc, 0, 100, "#444444", "#ffffff");
 
-// markers
 drawMarkers(fctx, mk, 12);
 drawMarkers(uctx, mk, 12);
 </script>
