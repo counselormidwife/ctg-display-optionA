@@ -26,7 +26,7 @@ html, body {
     padding: 8px 12px;
     border-radius: 4px;
     border: 1px solid #777;
-    min-width: 240px;
+    min-width: 260px;
 }
 
 #headerText {
@@ -71,7 +71,7 @@ canvas {
 <body>
 
 <div id="headerBox">
-    <div id="headerText">CTG MONITOR</div>
+    <div id="headerText">MONITOR</div>
     <div id="subheaderText">—</div>
 </div>
 
@@ -103,14 +103,22 @@ const mk = markers();
 const nst = params.get("nst") || "";
 const e = +params.get("e") || 0;
 const T = +params.get("T") || 0;
+const iupc = params.get("iupc") === "1";
 
 /* ================= HEADER ================= */
 
+let title = "MONITOR";
+if (mode === "NST") title = "NST MONITOR";
+else if (mode === "CTG") title = "CTG MONITOR";
+else if (iupc) title = "IUPC MONITOR";
+
 document.getElementById("headerText").innerText =
-    `${mode}  |  ${patient} ${ga}w`;
+    `${title}  |  ${patient} ${ga}w`;
 
 document.getElementById("subheaderText").innerText =
-    mode === "NST" ? `NST: ${nst}   ${e}/${T}s` : "";
+    mode === "NST"
+        ? `NST: ${nst}   ${e}/${T}s`
+        : "";
 
 /* ================= CANVAS ================= */
 
@@ -131,11 +139,12 @@ const uctx = ucC.getContext("2d");
 
 /* ================= DRAW HELPERS ================= */
 
-function grid(ctx, min, max, step, labelEvery) {
+function drawGrid(ctx, min, max, step, labelEvery, label, emphasize=false) {
     const h = ctx.canvas.height;
     const scale = h / (max - min);
-    ctx.strokeStyle = "#666";
-    ctx.lineWidth = 1.5;
+
+    ctx.strokeStyle = emphasize ? "#888" : "#666";
+    ctx.lineWidth = emphasize ? 2 : 1.5;
     ctx.fillStyle = "#ddd";
     ctx.font = "12px Arial";
 
@@ -145,18 +154,25 @@ function grid(ctx, min, max, step, labelEvery) {
         ctx.moveTo(0, y);
         ctx.lineTo(ctx.canvas.width, y);
         ctx.stroke();
-        if (v % labelEvery === 0) ctx.fillText(v, 6, y - 2);
+
+        if (v % labelEvery === 0) {
+            ctx.fillText(v.toString(), 6, y - 2);
+        }
     }
+
+    // axis label
+    ctx.fillStyle = "#aaa";
+    ctx.fillText(label, 6, 14);
 }
 
-function wave(ctx, data, min, max, baseColor, highlightColor) {
+function drawWave(ctx, data, min, max, baseColor, highlightColor) {
     if (!data.length) return;
 
     const h = ctx.canvas.height;
     const scaleY = h / (max - min);
     const stepX = ctx.canvas.width / (data.length - 1);
 
-    // underlay (soft, thick)
+    // underlay
     ctx.strokeStyle = baseColor;
     ctx.lineWidth = 4.5;
     ctx.lineJoin = "round";
@@ -168,7 +184,7 @@ function wave(ctx, data, min, max, baseColor, highlightColor) {
     });
     ctx.stroke();
 
-    // foreground (sharp)
+    // foreground
     ctx.strokeStyle = highlightColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -196,11 +212,42 @@ function drawMarkers(ctx, mks, y) {
 fctx.clearRect(0,0,fhrC.width,fhrC.height);
 uctx.clearRect(0,0,ucC.width,ucC.height);
 
-grid(fctx, 60, 200, 10, 20);
-grid(uctx, 0, 100, 10, 20);
+// FHR
+drawGrid(
+    fctx,
+    60,
+    200,
+    10,
+    20,
+    "FHR (bpm)",
+    true
+);
+drawWave(fctx, fhr, 60, 200, "#003300", "#00ff00");
 
-wave(fctx, fhr, 60, 200, "#003300", "#00ff00");
-wave(uctx, uc, 0, 100, "#444444", "#ffffff");
+// UC
+if (iupc) {
+    drawGrid(
+        uctx,
+        0,
+        100,
+        10,
+        20,
+        "Uterine Pressure (mmHg)",
+        true
+    );
+    drawWave(uctx, uc, 0, 100, "#444444", "#ffffff");
+} else {
+    drawGrid(
+        uctx,
+        0,
+        100,
+        20,
+        50,
+        "Uterine Activity (relative)",
+        false
+    );
+    drawWave(uctx, uc, 0, 100, "#333333", "#cccccc");
+}
 
 drawMarkers(fctx, mk, 12);
 drawMarkers(uctx, mk, 12);
