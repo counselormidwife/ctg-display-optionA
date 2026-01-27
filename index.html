@@ -6,15 +6,21 @@
 
 <style>
 html, body {
-    margin: 0; padding: 0;
-    width: 100%; height: 100%;
-    background: #000; overflow: hidden;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
     font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ================= HEADER ================= */
+
 #headerBox {
     position: absolute;
-    top: 40px; left: 12px;
+    top: 40px;                 /* SL-safe offset */
+    left: 12px;
     z-index: 9999;
     background: rgba(0,0,0,0.7);
     padding: 8px 12px;
@@ -23,59 +29,79 @@ html, body {
     min-width: 260px;
 }
 
-#headerText { font-size: 18px; font-weight: bold; color: #fff; }
-#subheaderText { margin-top: 4px; font-size: 14px; color: #aaffaa; }
-
-#container {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column;
+#headerText {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
 }
 
-canvas { display: block; width: 100%; }
+#subheaderText {
+    margin-top: 4px;
+    font-size: 14px;
+    color: #aaffaa;
+}
 
-#fhrCanvas { flex: 7; background: #000; }
-#ucCanvas  { flex: 3; background: #000; border-top: 2px solid #555; }
+/* ================= LAYOUT ================= */
+
+#container {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+}
+
+#fhrCanvas {
+    flex: 7;
+    background: #000;
+}
+
+#ucCanvas {
+    flex: 3;
+    background: #000;
+    border-top: 2px solid #555;
+}
 </style>
 </head>
 
 <body>
+
 <div id="headerBox">
-  <div id="headerText">MONITOR</div>
-  <div id="subheaderText">—</div>
+    <div id="headerText">MONITOR</div>
+    <div id="subheaderText">—</div>
 </div>
 
 <div id="container">
-  <canvas id="fhrCanvas"></canvas>
-  <canvas id="ucCanvas"></canvas>
+    <canvas id="fhrCanvas"></canvas>
+    <canvas id="ucCanvas"></canvas>
 </div>
 
 <script>
+/* ================= URL PARAMS ================= */
+
 const params = new URLSearchParams(window.location.search);
 
 function parseSeries(raw) {
-  if (!raw) return [];
-  // CSV path
-  if (raw.indexOf(",") !== -1) return raw.split(",").map(v => parseInt(v, 10) || 0);
-  // packed base36 path ('.' separated)
-  return raw.split(".").map(v => parseInt(v, 36) || 0);
+    if (!raw) return [];
+    if (raw.indexOf(",") !== -1) {
+        return raw.split(",").map(v => parseInt(v, 10) || 0);
+    }
+    return raw.split(".").map(v => parseInt(v, 36) || 0);
 }
 
 function parseMarkers(raw) {
-  if (!raw) return [];
-  // old format: "t:CODE;..."
-  if (raw.indexOf(":") !== -1) {
-    return raw.split(";").map(m => {
-      const p = m.split(":");
-      return { t: parseInt(p[0],10) || 0, code: p[1] || "X" };
+    if (!raw) return [];
+    // packed format: dtCODE.dtCODE
+    return raw.split(".").map(m => {
+        return {
+            dt: parseInt(m.slice(0, -1), 36) || 0,
+            code: m.slice(-1)
+        };
     });
-  }
-  // packed format: "dtCODE.dtCODE" where dt is base36 offset in-window
-  // We'll map to normalized x by dt/window
-  return raw.split(".").map(m => {
-    const dt = parseInt(m.slice(0, -1), 36) || 0;
-    const code = m.slice(-1) || "X"; // M/A/C/X; decels come as D? (we encode DE/DL/DV upstream as "X" here for now)
-    return { dt, code };
-  });
 }
 
 const mode    = params.get("mode") || "IDLE";
@@ -88,109 +114,139 @@ const uc  = parseSeries(params.get("u"));
 const mk  = parseMarkers(params.get("k"));
 
 const nst = params.get("nst") || "";
-const e   = parseInt(params.get("e") || "0", 10) || 0;
-const T   = parseInt(params.get("T") || "0", 10) || 0;
+const e   = parseInt(params.get("e") || "0", 10);
+const T   = parseInt(params.get("T") || "0", 10);
+
+/* ================= HEADER LOGIC (FIXED) ================= */
 
 let title = "MONITOR";
-if (mode === "NST") title = "NST MONITOR";
-else if (mode === "CTG") title = "CTG MONITOR";
-else if (iupc) title = "IUPC MONITOR";
 
-document.getElementById("headerText").innerText = `${title}  |  ${patient} ${ga}w`;
-document.getElementById("subheaderText").innerText = (mode === "NST") ? `NST: ${nst}   ${e}/${T}s` : "";
+if (iupc) {
+    title = "IUPC MONITOR";
+}
+else if (mode === "NST") {
+    title = "NST MONITOR";
+}
+else if (mode === "CTG") {
+    title = "CTG MONITOR";
+}
 
-// canvases
+document.getElementById("headerText").innerText =
+    `${title}  |  ${patient} ${ga}w`;
+
+document.getElementById("subheaderText").innerText =
+    (mode === "NST") ? `NST: ${nst}   ${e}/${T}s` : "";
+
+/* ================= CANVAS SETUP ================= */
+
 const fhrC = document.getElementById("fhrCanvas");
 const ucC  = document.getElementById("ucCanvas");
 
 function resize() {
-  fhrC.width = innerWidth; ucC.width = innerWidth;
-  fhrC.height = fhrC.clientHeight; ucC.height = ucC.clientHeight;
+    fhrC.width = window.innerWidth;
+    ucC.width  = window.innerWidth;
+    fhrC.height = fhrC.clientHeight;
+    ucC.height  = ucC.clientHeight;
 }
-addEventListener("resize", resize); resize();
+
+window.addEventListener("resize", resize);
+resize();
 
 const fctx = fhrC.getContext("2d");
 const uctx = ucC.getContext("2d");
 
+/* ================= DRAW HELPERS ================= */
+
 function drawGrid(ctx, min, max, step, labelEvery, label, emphasize=false) {
-  const h = ctx.canvas.height;
-  const scale = h / (max - min);
+    const h = ctx.canvas.height;
+    const scale = h / (max - min);
 
-  ctx.strokeStyle = emphasize ? "#888" : "#666";
-  ctx.lineWidth = emphasize ? 2 : 1.5;
-  ctx.fillStyle = "#ddd";
-  ctx.font = "12px Arial";
+    ctx.strokeStyle = emphasize ? "#888" : "#666";
+    ctx.lineWidth = emphasize ? 2 : 1.5;
+    ctx.fillStyle = "#ddd";
+    ctx.font = "12px Arial";
 
-  for (let v = min; v <= max; v += step) {
-    const y = h - (v - min) * scale;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(ctx.canvas.width, y); ctx.stroke();
-    if (v % labelEvery === 0) ctx.fillText(String(v), 6, y - 2);
-  }
-  ctx.fillStyle = "#aaa";
-  ctx.fillText(label, 6, 14);
+    for (let v = min; v <= max; v += step) {
+        const y = h - (v - min) * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(ctx.canvas.width, y);
+        ctx.stroke();
+
+        if (v % labelEvery === 0) {
+            ctx.fillText(v.toString(), 6, y - 2);
+        }
+    }
+
+    ctx.fillStyle = "#aaa";
+    ctx.fillText(label, 6, 14);
 }
 
 function drawWave(ctx, data, min, max, baseColor, highlightColor) {
-  if (!data.length) return;
-  const h = ctx.canvas.height;
-  const scaleY = h / (max - min);
-  const stepX = ctx.canvas.width / (data.length - 1);
+    if (!data.length) return;
 
-  ctx.strokeStyle = baseColor;
-  ctx.lineWidth = 4.5;
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  data.forEach((v, i) => {
-    const x = i * stepX;
-    const y = h - (v - min) * scaleY;
-    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
-  });
-  ctx.stroke();
+    const h = ctx.canvas.height;
+    const scaleY = h / (max - min);
+    const stepX = ctx.canvas.width / Math.max(data.length - 1, 1);
 
-  ctx.strokeStyle = highlightColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  data.forEach((v, i) => {
-    const x = i * stepX;
-    const y = h - (v - min) * scaleY;
-    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
-  });
-  ctx.stroke();
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 4.5;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    data.forEach((v, i) => {
+        const x = i * stepX;
+        const y = h - (v - min) * scaleY;
+        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.stroke();
+
+    ctx.strokeStyle = highlightColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+        const x = i * stepX;
+        const y = h - (v - min) * scaleY;
+        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.stroke();
 }
 
 function drawMarkers(ctx, markers, y) {
-  const n = fhr.length || 1;
-  markers.forEach(m => {
-    let c = "#aaa";
-    // packed markers use dt; older markers use t
-    let xFrac = 0;
-    if (typeof m.dt === "number") xFrac = m.dt / Math.max(n-1, 1);
-    else xFrac = (m.t || 0) / Math.max(n-1, 1);
+    const n = Math.max(fhr.length - 1, 1);
 
-    if (m.code === "M") c = "#4aa3ff";
-    if (m.code === "A") c = "#66ff66";
-    // decels are still coming through as X in packed mode unless we expand codes later
-    ctx.fillStyle = c;
-    ctx.fillRect(xFrac * ctx.canvas.width, y, 3, 16);
-  });
+    markers.forEach(m => {
+        let c = "#aaa";
+        if (m.code === "M") c = "#4aa3ff";
+        if (m.code === "A") c = "#66ff66";
+        if (["E","L","V"].includes(m.code)) c = "#ff5555";
+
+        const xFrac = m.dt / n;
+        ctx.fillStyle = c;
+        ctx.fillRect(xFrac * ctx.canvas.width, y, 3, 16);
+    });
 }
+
+/* ================= DRAW ================= */
 
 fctx.clearRect(0,0,fhrC.width,fhrC.height);
 uctx.clearRect(0,0,ucC.width,ucC.height);
 
+// FHR
 drawGrid(fctx, 60, 200, 10, 20, "FHR (bpm)", true);
 drawWave(fctx, fhr, 60, 200, "#003300", "#00ff00");
 
+// UC
 if (iupc) {
-  drawGrid(uctx, 0, 100, 10, 20, "Uterine Pressure (mmHg)", true);
-  drawWave(uctx, uc, 0, 100, "#444444", "#ffffff");
+    drawGrid(uctx, 0, 100, 10, 20, "Uterine Pressure (mmHg)", true);
+    drawWave(uctx, uc, 0, 100, "#444444", "#ffffff");
 } else {
-  drawGrid(uctx, 0, 100, 20, 50, "Uterine Activity (relative)", false);
-  drawWave(uctx, uc, 0, 100, "#333333", "#cccccc");
+    drawGrid(uctx, 0, 100, 20, 50, "Uterine Activity (relative)", false);
+    drawWave(uctx, uc, 0, 100, "#333333", "#cccccc");
 }
 
 drawMarkers(fctx, mk, 12);
 drawMarkers(uctx, mk, 12);
 </script>
+
 </body>
 </html>
