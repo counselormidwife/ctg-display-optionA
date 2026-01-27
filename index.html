@@ -95,19 +95,19 @@ function parseSeries(raw) {
 
 function parseMarkers(raw) {
     if (!raw) return [];
-    // packed format: dtCODE.dtCODE
-    return raw.split(".").map(m => {
-        return {
-            dt: parseInt(m.slice(0, -1), 36) || 0,
-            code: m.slice(-1)
-        };
-    });
+    return raw.split(".").map(m => ({
+        dt: parseInt(m.slice(0, -1), 36) || 0,
+        code: m.slice(-1)
+    }));
 }
 
 const mode    = params.get("mode") || "IDLE";
 const patient = params.get("pat")  || "";
 const ga      = params.get("ga")   || "";
-const iupc    = (params.get("iupc") === "1");
+
+/* -------- FIXED IUPC DETECTION -------- */
+const iupcRaw = params.get("iupc");
+const iupc = (iupcRaw === "1" || iupcRaw === "true");
 
 const fhr = parseSeries(params.get("f"));
 const uc  = parseSeries(params.get("u"));
@@ -117,7 +117,7 @@ const nst = params.get("nst") || "";
 const e   = parseInt(params.get("e") || "0", 10);
 const T   = parseInt(params.get("T") || "0", 10);
 
-/* ================= HEADER LOGIC (FIXED) ================= */
+/* ================= HEADER LOGIC ================= */
 
 let title = "MONITOR";
 
