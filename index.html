@@ -63,7 +63,7 @@ canvas {
 #ucCanvas {
     flex: 3;
     background: #000;
-    border-top: 2px solid #555;
+    border-top: 3px solid #777;
 }
 </style>
 </head>
@@ -105,7 +105,6 @@ const mode    = params.get("mode") || "IDLE";
 const patient = params.get("pat")  || "";
 const ga      = params.get("ga")   || "";
 
-/* Robust IUPC detection */
 const iupcRaw = params.get("iupc");
 const iupc = (iupcRaw === "1" || iupcRaw === "true");
 
@@ -117,7 +116,7 @@ const nst = params.get("nst") || "";
 const e   = parseInt(params.get("e") || "0", 10);
 const T   = parseInt(params.get("T") || "0", 10);
 
-/* ================= HEADER LOGIC (FINAL) ================= */
+/* ================= HEADER LOGIC ================= */
 
 let title = "MONITOR";
 
@@ -157,13 +156,18 @@ const uctx = ucC.getContext("2d");
 
 /* ================= DRAW HELPERS ================= */
 
-function drawGrid(ctx, min, max, step, labelEvery, label, emphasize=false) {
+function drawGrid(ctx, min, max, step, labelEvery, label, options = {}) {
     const h = ctx.canvas.height;
     const scale = h / (max - min);
 
-    ctx.strokeStyle = emphasize ? "#888" : "#666";
-    ctx.lineWidth = emphasize ? 2 : 1.5;
-    ctx.fillStyle = "#ddd";
+    const gridColor = options.gridColor || "#666";
+    const labelColor = options.labelColor || "#ddd";
+    const axisTitleColor = options.axisTitleColor || "#aaa";
+    const lineWidth = options.emphasize ? 2 : 1.5;
+
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = lineWidth;
+    ctx.fillStyle = labelColor;
     ctx.font = "12px Arial";
 
     for (let v = min; v <= max; v += step) {
@@ -178,7 +182,7 @@ function drawGrid(ctx, min, max, step, labelEvery, label, emphasize=false) {
         }
     }
 
-    ctx.fillStyle = "#aaa";
+    ctx.fillStyle = axisTitleColor;
     ctx.fillText(label, 6, 14);
 }
 
@@ -196,7 +200,7 @@ function drawWave(ctx, data, min, max, baseColor, highlightColor) {
     data.forEach((v, i) => {
         const x = i * stepX;
         const y = h - (v - min) * scaleY;
-        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     });
     ctx.stroke();
 
@@ -206,7 +210,7 @@ function drawWave(ctx, data, min, max, baseColor, highlightColor) {
     data.forEach((v, i) => {
         const x = i * stepX;
         const y = h - (v - min) * scaleY;
-        i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     });
     ctx.stroke();
 }
@@ -228,19 +232,58 @@ function drawMarkers(ctx, markers, y) {
 
 /* ================= DRAW ================= */
 
-fctx.clearRect(0,0,fhrC.width,fhrC.height);
-uctx.clearRect(0,0,ucC.width,ucC.height);
+fctx.clearRect(0, 0, fhrC.width, fhrC.height);
+uctx.clearRect(0, 0, ucC.width, ucC.height);
 
 // FHR
-drawGrid(fctx, 60, 200, 10, 20, "FHR (bpm)", true);
+drawGrid(
+    fctx,
+    60,
+    200,
+    10,
+    20,
+    "FHR (bpm)",
+    {
+        emphasize: true,
+        gridColor: "#888",
+        labelColor: "#dddddd",
+        axisTitleColor: "#bbbbbb"
+    }
+);
 drawWave(fctx, fhr, 60, 200, "#003300", "#00ff00");
 
 // UC
 if (mode === "IUPC" || iupc) {
-    drawGrid(uctx, 0, 100, 10, 20, "Uterine Pressure (mmHg)", true);
+    drawGrid(
+        uctx,
+        0,
+        100,
+        10,
+        20,
+        "Uterine Pressure (mmHg)",
+        {
+            emphasize: true,
+            gridColor: "#886644",
+            labelColor: "#ffcc88",
+            axisTitleColor: "#ffbb66"
+        }
+    );
     drawWave(uctx, uc, 0, 100, "#444444", "#ffffff");
 } else {
-    drawGrid(uctx, 0, 100, 20, 50, "Uterine Activity (relative)", false);
+    drawGrid(
+        uctx,
+        0,
+        100,
+        20,
+        50,
+        "Uterine Activity (relative)",
+        {
+            emphasize: false,
+            gridColor: "#665544",
+            labelColor: "#e0b070",
+            axisTitleColor: "#d9a85f"
+        }
+    );
     drawWave(uctx, uc, 0, 100, "#333333", "#cccccc");
 }
 
