@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CTG / Fetal Monitor Display</title>
+
+  <style>
+    :root {
+      --bg: #0f1216;
+      --panel: #151a20;
+      --panel-2: #10151a;
+      --border: #39424c;
+      --border-strong: #586573;
+      --text: #edf3f8;
+      --muted: #aeb8c2;
+      --fhr-accent: #dbe7f2;
+      --ua-accent: #d7dde6;
+      --axis-text: #c9d4de;
+      --grid-text: #8f9baa;
+      --value-text: #ffffff;
+      --warning: #ffd87a;
+
+      --safe-margin: 2%;
+      --header-h: 12%;
+      --fhr-h: 58%;
+      --ua-h: 30%;
+
+      --section-gap: 0.8%;
+      --inner-pad: 0.9%;
+      --axis-gutter: 7.5%;
+      --bottom-strip: 12%;
+      --label-strip: 12%;
+      --radius: 6px;
+
+      --font-main: Arial, Helvetica, sans-serif;
+      --font-mono: "Courier New", Courier, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: var(--font-main);
+      color: var(--text);
+    }
+
+    body {
+      background: var(--bg);
+    }
+
+    /* Outer display root */
+    #display-root {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* Safe Content Box - locked 2% margin */
+    #safe-content-box {
+      position: absolute;
+      top: var(--safe-margin);
+      left: var(--safe-margin);
+      width: calc(100% - (var(--safe-margin) * 2));
+      height: calc(100% - (var(--safe-margin) * 2));
+      display: flex;
+      flex-direction: column;
+      gap: var(--section-gap);
+      overflow: hidden;
+    }
+
+    .band {
+      width: 100%;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* =========================
+       HEADER BAND (12%)
+       ========================= */
+    #header-band {
+      height: var(--header-h);
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1.2fr;
+      align-items: stretch;
+      background: linear-gradient(to bottom, #171d24, #12171d);
+    }
+
+    .header-section {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 1.1% 1.5%;
+      min-width: 0;
+    }
+
+    .header-section + .header-section {
+      border-left: 1px solid var(--border);
+    }
+
+    .header-label {
+      font-size: 1.15vw;
+      line-height: 1.1;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.3em;
+      white-space: nowrap;
+    }
+
+    .header-value {
+      font-size: 2.0vw;
+      line-height: 1.1;
+      color: var(--value-text);
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-value.small {
+      font-size: 1.6vw;
+      font-weight: 700;
+    }
+
+    .header-center {
+      align-items: center;
+      text-align: center;
+    }
+
+    #header-mode {
+      font-size: 2.4vw;
+      letter-spacing: 0.08em;
+    }
+
+    #header-status-line {
+      margin-top: 0.25em;
+      font-size: 1.15vw;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* =========================
+       FHR BAND (58%)
+       ========================= */
+    #fhr-band {
+      height: var(--fhr-h);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: var(--inner-pad);
+      background: var(--panel-2);
+    }
+
+    .pane-header {
+      flex: 0 0 10%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.6%;
+      border-bottom: 1px solid var(--border);
+      color: var(--fhr-accent);
+      min-height: 0;
+    }
+
+    .pane-title {
+      font-size: 1.4vw;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .pane-readouts {
+      display: flex;
+      gap: 1.2vw;
+      align-items: baseline;
+      min-width: 0;
+      flex-wrap: nowrap;
+    }
+
+    .readout-block {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4vw;
+      white-space: nowrap;
+    }
+
+    .readout-label {
+      font-size: 1.0vw;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .readout-value {
+      font-size: 1.7vw;
+      font-weight: 700;
+      color: var(--value-text);
+    }
+
+    .trace-region {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: var(--axis-gutter) 1fr;
+      grid-template-rows: 1fr var(--bottom-strip);
+      margin-top: 0.7%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #0d1116;
+    }
+
+    .axis-gutter {
+      grid-column: 1;
+      grid-row: 1;
+      border-right: 1px solid var(--border);
+      background: #12181f;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5% 2%;
+      color: var(--axis-text);
+      font-size: 1.05vw;
+      font-weight: 700;
+    }
+
+    .plot-wrap {
+      grid-column: 2;
+      grid-row: 1;
+      position: relative;
+      background:
+        repeating-linear-gradient(
+          to right,
+          rgba(255,255,255,0.03) 0,
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 5%
+        ),
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.03) 0,
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 12.5%
+        ),
+        #0d1116;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+    }
+
+    .canvas-overlay-label {
+      position: absolute;
+      top: 1.3%;
+      left: 1%;
+      font-size: 0.95vw;
+      color: var(--grid-text);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .bottom-strip {
+      grid-column: 1 / span 2;
+      grid-row: 2;
+      display: grid;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      background: #131920;
+      min-height: 0;
+    }
+
+    #fhr-bottom-strip {
+      grid-template-columns: var(--axis-gutter) 1fr;
+    }
+
+    .bottom-strip-axis-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 2%;
+      border-right: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.95vw;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .bottom-strip-values {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.6vw;
+      padding: 0 1.1%;
+      color: var(--axis-text);
+      font-family: var(--font-mono);
+      font-size: 1vw;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .tick-label {
+      opacity: 0.95;
+      flex: 1 1 0;
+      text-align: center;
+    }
+
+    /* =========================
+       UA BAND (30%)
+       ========================= */
+    #ua-band {
+      height: var(--ua-h);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: var(--inner-pad);
+      background: var(--panel-2);
+    }
+
+    #ua-pane-header {
+      flex: 0 0 var(--label-strip);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.6%;
+      border-bottom: 1px solid var(--border-strong);
+      color: var(--ua-accent);
+      min-height: 0;
+    }
+
+    #ua-bottom-strip {
+      grid-template-columns: var(--axis-gutter) 1fr;
+    }
+
+    .ua-label-row {
+      display: flex;
+      align-items: center;
+      gap: 1vw;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.18em 0.6em;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      font-size: 0.95vw;
+      color: var(--text);
+      background: #18202a;
+      white-space: nowrap;
+    }
+
+    .pill.dim {
+      color: var(--muted);
+      border-color: var(--border);
+      background: #141a22;
+    }
+
+    .qualitative-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5vw;
+      padding: 0 1.1%;
+      color: var(--axis-text);
+      font-size: 0.95vw;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .qual-label {
+      flex: 1 1 0;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* utility */
+    .mono {
+      font-family: var(--font-mono);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .warning {
+      color: var(--warning);
+    }
+  </style>
+</head>
+<body>
+  <div id="display-root">
+
+    <!-- SAFE CONTENT BOX -->
+    <div id="safe-content-box">
+
+      <!-- =========================
+           HEADER BAND
+           Frozen height: 12%
+           ========================= -->
+      <header id="header-band" class="band">
+
+        <!-- Header Left -->
+        <section id="header-left" class="header-section">
+          <div class="header-label">Patient</div>
+          <div id="patient-name" class="header-value">No Patient</div>
+        </section>
+
+        <!-- Header Center -->
+        <section id="header-center" class="header-section header-center">
+          <div class="header-label">Mode</div>
+          <div id="header-mode" class="header-value">IDLE</div>
+          <div id="header-status-line">CTG / Fetal Monitor Display</div>
+        </section>
+
+        <!-- Header Right -->
+        <section id="header-right" class="header-section">
+          <div class="header-label">Gestational Age</div>
+          <div id="gestational-age" class="header-value small">0 wks</div>
+        </section>
+      </header>
+
+      <!-- =========================
+           FHR BAND
+           Frozen height: 58%
+           ========================= -->
+      <section id="fhr-band" class="band">
+
+        <!-- FHR Pane Header -->
+        <div id="fhr-pane-header" class="pane-header">
+          <div class="pane-title">FHR</div>
+
+          <div class="pane-readouts">
+            <div class="readout-block">
+              <span class="readout-label">Baseline</span>
+              <span id="fhr-baseline-value" class="readout-value">--</span>
+            </div>
+            <div class="readout-block">
+              <span class="readout-label">Live</span>
+              <span id="fhr-live-value" class="readout-value">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FHR Trace Region -->
+        <div id="fhr-trace-region" class="trace-region">
+
+          <!-- FHR Axis Gutter -->
+          <aside id="fhr-axis-gutter" class="axis-gutter">
+            <div class="axis-tick">240</div>
+            <div class="axis-tick">210</div>
+            <div class="axis-tick">180</div>
+            <div class="axis-tick">150</div>
+            <div class="axis-tick">120</div>
+            <div class="axis-tick">90</div>
+            <div class="axis-tick">60</div>
+            <div class="axis-tick">30</div>
+          </aside>
+
+          <!-- FHR Plot Container -->
+          <div id="fhr-plot-wrap" class="plot-wrap">
+            <div class="canvas-overlay-label">Fetal Heart Rate Trace</div>
+            <canvas id="fhr-canvas" aria-label="Fetal Heart Rate Canvas"></canvas>
+          </div>
+
+          <!-- FHR Bottom Numeric Strip -->
+          <div id="fhr-bottom-strip" class="bottom-strip">
+            <div class="bottom-strip-axis-label">Time</div>
+            <div class="bottom-strip-values mono">
+              <span class="tick-label">0</span>
+              <span class="tick-label">1</span>
+              <span class="tick-label">2</span>
+              <span class="tick-label">3</span>
+              <span class="tick-label">4</span>
+              <span class="tick-label">5</span>
+              <span class="tick-label">6</span>
+              <span class="tick-label">7</span>
+              <span class="tick-label">8</span>
+              <span class="tick-label">9</span>
+              <span class="tick-label">10</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- =========================
+           UA BAND
+           Frozen height: 30%
+           ========================= -->
+      <section id="ua-band" class="band">
+
+        <!-- UA Pane Header -->
+        <div id="ua-pane-header">
+          <div class="pane-title">Uterine Activity</div>
+
+          <div class="ua-label-row">
+            <span class="pill" id="ua-mode-label">TOCO</span>
+            <span class="pill dim" id="ua-qualitative-label">Qualitative Ready</span>
+            <span class="pill dim" id="ua-iupc-label">IUPC Ready</span>
+            <span class="pill dim" id="ua-tone-label">Tone: Normal</span>
+            <span class="pill dim" id="ua-tone-numeric">10 mmHg</span>
+          </div>
+        </div>
+
+        <!-- UA Trace Region -->
+        <div id="ua-trace-region" class="trace-region">
+
+          <!-- UA Axis Gutter -->
+          <aside id="ua-axis-gutter" class="axis-gutter">
+            <div class="axis-tick">100</div>
+            <div class="axis-tick">80</div>
+            <div class="axis-tick">60</div>
+            <div class="axis-tick">40</div>
+            <div class="axis-tick">20</div>
+            <div class="axis-tick">0</div>
+          </aside>
+
+          <!-- UA Plot Container -->
+          <div id="ua-plot-wrap" class="plot-wrap">
+            <div class="canvas-overlay-label">Uterine Activity Trace</div>
+            <canvas id="ua-canvas" aria-label="Uterine Activity Canvas"></canvas>
+          </div>
+
+          <!-- UA Bottom Numeric / Label Strip -->
+          <div id="ua-bottom-strip" class="bottom-strip">
+            <div class="bottom-strip-axis-label">Scale</div>
+            <div id="ua-bottom-values" class="qualitative-strip">
+              <span class="qual-label" id="ua-label-resting">Resting</span>
+              <span class="qual-label" id="ua-label-mild">Mild</span>
+              <span class="qual-label" id="ua-label-moderate">Moderate</span>
+              <span class="qual-label" id="ua-label-strong">Strong</span>
+              <span class="qual-label" id="ua-label-peak">Peak</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script>
+    /*
+      Initial display-state placeholders only.
+      No waveform logic yet.
+      These IDs are intentionally stable for future LSL/JavaScript integration.
+    */
+
+    const DisplayState = {
+      mode: "IDLE",
+      patientName: "No Patient",
+      gestationalAgeWeeks: 0,
+      fhrBaseline: "--",
+      fhrLive: "--",
+      uaModeLabel: "TOCO",
+      uterineToneLabel: "Normal",
+      uterineToneNumeric: 10,
+      iupcEnabled: false
+    };
+
+    function applyDisplayState() {
+      document.getElementById("header-mode").textContent = DisplayState.mode;
+      document.getElementById("patient-name").textContent = DisplayState.patientName;
+      document.getElementById("gestational-age").textContent = DisplayState.gestationalAgeWeeks + " wks";
+      document.getElementById("fhr-baseline-value").textContent = DisplayState.fhrBaseline;
+      document.getElementById("fhr-live-value").textContent = DisplayState.fhrLive;
+
+      document.getElementById("ua-mode-label").textContent = DisplayState.iupcEnabled ? "IUPC" : "TOCO";
+      document.getElementById("ua-qualitative-label").textContent = DisplayState.iupcEnabled ? "Qualitative Hidden" : "Qualitative Ready";
+      document.getElementById("ua-iupc-label").textContent = DisplayState.iupcEnabled ? "IUPC Numeric Active" : "IUPC Ready";
+      document.getElementById("ua-tone-label").textContent = "Tone: " + DisplayState.uterineToneLabel;
+      document.getElementById("ua-tone-numeric").textContent = DisplayState.uterineToneNumeric + " mmHg";
+    }
+
+    /*
+      Future hook examples:
+      - receiveMessageFromLSL(payload)
+      - updateFromSharedMessage("MC|PATIENT|Name|38")
+      - updateFromSharedMessage("MC|IUPC|1")
+      - updateFromSharedMessage("MC|URTONE|15|Elevated")
+      - updateFromSharedMessage("DISP|STATUS|CTG|Patient|39")
+      - updateFromSharedMessage("FHR|UPDATE|CURRENT|145|Moderate")
+      - updateFromSharedMessage("CON|POINT|42")
+    */
+    function updateFromSharedMessage(rawMessage) {
+      if (!rawMessage || typeof rawMessage !== "string") return;
+
+      const parts = rawMessage.split("|");
+      const prefix = parts[0] || "";
+
+      if (prefix === "MC") {
+        const cmd = parts[1] || "";
+
+        if (cmd === "PATIENT") {
+          DisplayState.patientName = parts[2] || "No Patient";
+          DisplayState.gestationalAgeWeeks = parseInt(parts[3] || "0", 10);
+        } else if (cmd === "IUPC") {
+          DisplayState.iupcEnabled = (parseInt(parts[2] || "0", 10) === 1);
+        } else if (cmd === "URTONE") {
+          DisplayState.uterineToneNumeric = parseInt(parts[2] || "10", 10);
+          DisplayState.uterineToneLabel = parts[3] || "Normal";
+        } else if (cmd === "STATE" && parts[2] === "READY") {
+          DisplayState.mode = parts[3] || "IDLE";
+        } else if (cmd === "CMD" && parts[2] === "START_SIM") {
+          DisplayState.mode = parts[3] || DisplayState.mode;
+        }
+      } else if (prefix === "DISP") {
+        const cmd = parts[1] || "";
+        if (cmd === "STATUS") {
+          DisplayState.mode = parts[2] || DisplayState.mode;
+          DisplayState.patientName = parts[3] || DisplayState.patientName;
+          DisplayState.gestationalAgeWeeks = parseInt(parts[4] || DisplayState.gestationalAgeWeeks, 10);
+        }
+      } else if (prefix === "FHR") {
+        if (parts[1] === "UPDATE" && parts[2] === "CURRENT") {
+          DisplayState.fhrLive = parts[3] || "--";
+        }
+      }
+
+      applyDisplayState();
+    }
+
+    applyDisplayState();
+  </script>
+</body>
+</html>
