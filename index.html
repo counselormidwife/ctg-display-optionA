@@ -663,17 +663,17 @@
     }
 
     function buildHeaderStatusLine() {
+      const params = new URLSearchParams(window.location.search);
+      const rev = params.get("rev") || "0";
+
       let parts = [];
+      parts.push("REV " + rev);
+      parts.push("MODE " + DisplayState.mode);
+      parts.push("GA " + DisplayState.gestationalAgeWeeks);
 
       if (DisplayState.nstStatus) {
-        parts.push(`NST: ${DisplayState.nstStatus}`);
+        parts.push("NST: " + DisplayState.nstStatus);
       }
-
-      if (DisplayState.nstTotal > 0) {
-        parts.push(`Timer ${DisplayState.nstElapsed}/${DisplayState.nstTotal}`);
-      }
-
-      parts.push(DisplayState.randomMode ? "Random On" : "Random Off");
 
       return parts.join(" | ");
     }
@@ -734,7 +734,6 @@
 
     // ==========================================================
     // OPTIONAL FUTURE DIRECT MESSAGE HOOK
-    // Safe placeholder for later expansion.
     // ==========================================================
     function updateFromSharedMessage(rawMessage) {
       if (!rawMessage || typeof rawMessage !== "string") return;
